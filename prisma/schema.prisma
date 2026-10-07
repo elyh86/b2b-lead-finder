@@ -92,11 +92,16 @@ model Lead {
   placeId            String
   businessName       String
   phone              String?
+  email              String?
   address            String
   website            String?
   rating             Float?
   reviewCount        Int      @default(0)
   digitalHealthScore Int
+  leadGrade          String   @default("B")
+  status             String   @default("NEW")
+  notes              String?
+  nextFollowUpAt     DateTime?
   createdAt          DateTime @default(now())
   userId             String
   scanId             String

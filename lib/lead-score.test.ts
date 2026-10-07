@@ -14,9 +14,9 @@ describe("calculateDigitalHealthScore", () => {
     ).toBe(100);
   });
 
-  it("does not penalize a rating that Google does not provide", () => {
+  it("does not penalize missing rating and review data", () => {
     expect(
-      calculateDigitalHealthScore({ website: "https://example.nl", rating: null, reviewCount: 10, phone: "+31123456789" }),
+      calculateDigitalHealthScore({ website: "https://example.nl", rating: null, reviewCount: 0, phone: "+31123456789" }),
     ).toBe(100);
   });
 });

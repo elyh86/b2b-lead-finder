@@ -1,6 +1,7 @@
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { PlacesError, searchPlaces } from "@/lib/places";
+import { selectScanResults } from "@/lib/scan-results";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -10,6 +11,7 @@ const searchSchema = z.object({
   niche: z.string().trim().min(2).max(100),
   location: z.string().trim().min(2).max(100),
   limit: z.number().int().min(1).max(20).default(20),
+  strictSPlus: z.boolean().default(false),
 });
 
 class InsufficientCreditsError extends Error {}
@@ -32,27 +34,44 @@ export async function POST(request: Request) {
   if (!account) return NextResponse.json({ error: "Account niet gevonden." }, { status: 404 });
   if (!account.unlimitedCredits && account.credits < 1) {
     return NextResponse.json(
-      { error: "Je credits zijn op. Upgrade je abonnement om verder te zoeken." },
+      { error: "Je beta-credits zijn op. De gratis beta biedt 50 zoekcredits per account." },
       { status: 402 },
     );
   }
 
   try {
-    const leads = await searchPlaces(parsed.data.niche, parsed.data.location, parsed.data.limit);
-    const balance = await prisma.$transaction(async (transaction) => {
+    const foundLeads = await searchPlaces(parsed.data.niche, parsed.data.location, parsed.data.limit, parsed.data.strictSPlus);
+    const result = await prisma.$transaction(async (transaction) => {
       const latestAccount = await transaction.user.findUnique({
         where: { id: session.user.id },
         select: { credits: true, unlimitedCredits: true },
       });
       if (!latestAccount) throw new Error("Account niet gevonden.");
-      if (!latestAccount.unlimitedCredits && latestAccount.credits < leads.length) {
+
+      const existingLeads = await transaction.lead.findMany({
+        where: { userId: session.user.id, placeId: { in: foundLeads.map((lead) => lead.placeId) } },
+        select: { placeId: true },
+      });
+      const knownPlaceIds = new Set(existingLeads.map((lead) => lead.placeId));
+      const { leads, billableLeads } = selectScanResults(
+        foundLeads,
+        knownPlaceIds,
+        latestAccount.credits,
+        latestAccount.unlimitedCredits,
+      );
+
+      if (
+        !latestAccount.unlimitedCredits &&
+        latestAccount.credits < 1 &&
+        foundLeads.some((lead) => !knownPlaceIds.has(lead.placeId))
+      ) {
         throw new InsufficientCreditsError();
       }
 
-      if (!latestAccount.unlimitedCredits && leads.length > 0) {
+      if (!latestAccount.unlimitedCredits && billableLeads.length > 0) {
         const charged = await transaction.user.updateMany({
-          where: { id: session.user.id, credits: { gte: leads.length } },
-          data: { credits: { decrement: leads.length } },
+          where: { id: session.user.id, credits: { gte: billableLeads.length } },
+          data: { credits: { decrement: billableLeads.length } },
         });
         if (charged.count !== 1) throw new InsufficientCreditsError();
       }
@@ -62,25 +81,57 @@ export async function POST(request: Request) {
           niche: parsed.data.niche,
           location: parsed.data.location,
           resultCount: leads.length,
-          creditsUsed: latestAccount.unlimitedCredits ? 0 : leads.length,
+          creditsUsed: latestAccount.unlimitedCredits ? 0 : billableLeads.length,
           userId: session.user.id,
         },
       });
-      if (leads.length > 0) {
+      if (billableLeads.length > 0) {
         await transaction.lead.createMany({
-          data: leads.map((lead) => ({ ...lead, userId: session.user.id, scanId: scan.id })),
+          data: billableLeads.map((lead) => ({ ...lead, userId: session.user.id, scanId: scan.id })),
         });
       }
-      return latestAccount.unlimitedCredits
-        ? latestAccount.credits
-        : latestAccount.credits - leads.length;
+      if (parsed.data.strictSPlus && leads.length > 0) {
+        await transaction.lead.updateMany({
+          where: { userId: session.user.id, placeId: { in: leads.map((lead) => lead.placeId) } },
+          data: { leadGrade: "S_PLUS" },
+        });
+      }
+      const savedLeads = await transaction.lead.findMany({
+        where: { userId: session.user.id, placeId: { in: leads.map((lead) => lead.placeId) } },
+        select: {
+          id: true,
+          placeId: true,
+          businessName: true,
+          phone: true,
+          email: true,
+          address: true,
+          website: true,
+          rating: true,
+          reviewCount: true,
+          digitalHealthScore: true,
+          leadGrade: true,
+          status: true,
+          notes: true,
+          nextFollowUpAt: true,
+        },
+      });
+      const savedLeadsByPlaceId = new Map(savedLeads.map((lead) => [lead.placeId, lead]));
+      return {
+        leads: leads.flatMap((lead) => {
+          const savedLead = savedLeadsByPlaceId.get(lead.placeId);
+          return savedLead ? [savedLead] : [];
+        }),
+        credits: latestAccount.unlimitedCredits
+          ? latestAccount.credits
+          : latestAccount.credits - billableLeads.length,
+      };
     });
 
-    return NextResponse.json({ leads, credits: balance });
+    return NextResponse.json(result);
   } catch (error) {
     if (error instanceof InsufficientCreditsError) {
       return NextResponse.json(
-        { error: "Onvoldoende credits voor deze scan. Upgrade je abonnement om verder te zoeken." },
+        { error: "Je beta-credits zijn op. Elk account krijgt 50 zoekcredits tijdens de gratis beta." },
         { status: 402 },
       );
     }

@@ -1,11 +1,11 @@
 # B2B Lead Finder
 
-Een Next.js-app voor lokale B2B-leadgeneratie met Google Places, Prisma/PostgreSQL, accountsessies en Stripe-abonnementen.
+Een gratis-beta voor lokale prospectie met open data van OpenStreetMap, een lichte CRM-werkruimte en Prisma/SQLite.
 
 ## Lokaal starten
 
 1. Installeer Node.js 20.9 of hoger.
-2. Kopieer `.env.example` naar `.env` en vervang `AUTH_SECRET` door een willekeurige secret.
+2. Kopieer `.env.example` naar `.env` en vervang `AUTH_SECRET` door een willekeurige secret. Voor zoeken zijn geen API-sleutels nodig.
 3. Installeer pakketten met `npm install`.
 4. Maak het lokale SQLite-schema met `npm run db:push`.
 5. Maak de demoaccounts met `npm run db:seed-demo`. De opdracht toont twee nieuwe wachtwoorden; bewaar ze meteen.
@@ -13,14 +13,14 @@ Een Next.js-app voor lokale B2B-leadgeneratie met Google Places, Prisma/PostgreS
 
 De seed maakt uitsluitend lokale SQLite-demoaccounts aan en weigert te draaien in productie of tegen PostgreSQL. De accounts zijn `admin@b2b-lead-finder.test` (rol Admin) en `klant@b2b-lead-finder.test` (rol Klant). Elke seedrun roteert hun wachtwoorden.
 
-Nieuwe accounts krijgen 50 gratis credits. Elke gevonden lead kost 1 credit; een lege zoekopdracht is gratis. Elke Places-scan is begrensd op 20 resultaten. Google Places is een betaald gebruiksproduct en kan een actief Cloud Billing-account vereisen.
+Nieuwe accounts krijgen 50 gratis credits. Elke nieuwe lead kost 1 credit; een lege zoekopdracht is gratis. Elke scan is begrensd op 20 resultaten. Locaties worden gevonden met Photon en bedrijven met Overpass, beide op basis van OpenStreetMap-data. Beoordelingen en reviewaantallen zijn niet beschikbaar in deze bron. De publieke diensten zijn gratis zonder sleutel, maar gedeeld, kennen fair-use-beperkingen en bieden geen uptimegarantie. De dekking verschilt per plaats en branche; zoek daarom per stad of plaats. Data valt onder de ODbL; de app toont OpenStreetMap-attributie.
 
-## Stripe instellen
+De S+-modus vereist een exact herkende OSM-branchetag, een openbaar telefoonnummer en e-mailadres, én geen websitevermelding in OSM. S betekent een exacte branchetag met minimaal een van beide contactkanalen en evenmin een websitevermelding; A/B zijn bredere matches of bedrijven met een websitevermelding. Grades meten alleen de beschikbare OSM-data: niet-vermeld betekent niet bewezen afwezig, en contactgegevens of bedrijfsactiviteit zijn niet onafhankelijk geverifieerd.
 
-Maak in Stripe maandelijkse prijzen van EUR 19 (Starter) en EUR 49 (Pro). Zet de Price IDs in `STRIPE_STARTER_PRICE_ID` en `STRIPE_PRO_PRICE_ID`, en vul `STRIPE_SECRET_KEY` in. Configureer een webhook naar `/api/stripe/webhook` voor `checkout.session.completed`, `invoice.paid` en `customer.subscription.deleted`; bewaar de signing secret als `STRIPE_WEBHOOK_SECRET`.
+## Beta en betalingen
 
-Starter voegt 1.000 credits toe na een betaalde factuur. Pro schakelt onbeperkt zoeken in. Webhookhandtekeningen worden server-side gecontroleerd en dubbele Starter-facturen worden door een unieke databaseconstraint niet dubbel toegekend.
+De productervaring is momenteel gratis: nieuwe accounts krijgen 50 zoekcredits en de betaalde plannen/checkout zijn niet zichtbaar. De Stripe-routes en configuratie zijn alleen voorbereid voor later; stel geen prijzen in voordat dekking, contactkwaliteit en terugkerend gebruik met echte gebruikers zijn gevalideerd.
 
 ## Productie
 
-Gebruik voor productie een beheerde PostgreSQL-database, HTTPS, sterke secrets, een beperkt Google API-key en ingestelde Stripe live-prijzen/webhooks. Zet in `prisma/schema.prisma` de datasource-provider op `postgresql`, stel `DATABASE_URL` in en maak voor die database een migratie voordat je `npm run db:deploy` gebruikt. Voer `npm run build` uit voor een productiebuild. Regel ook monitoring, back-ups, privacy-/toestemmingsteksten en bewaartermijnen. De app gebruikt de officiële Places API; controleer de toepasselijke Google Maps Platform-voorwaarden voor je gebruik en opslag van gegevens.
+Gebruik voor productie een beheerde database, HTTPS, sterke secrets en monitoring. Photon en Overpass zijn publieke gemeenschapsdiensten zonder SLA; houd het gebruik bescheiden en cache resultaten. Bij veel gebruikers of hogere volumes moet je een eigen Photon- en Overpass-instance of een andere gehoste provider gebruiken. Voer `npm run build` uit voor een productiebuild. Regel ook back-ups, privacy-/toestemmingsteksten en bewaartermijnen. OpenStreetMap-data is beschikbaar onder de ODbL; controleer de toepasselijke attributie- en share-alike-verplichtingen voor je gebruik.
